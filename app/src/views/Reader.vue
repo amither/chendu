@@ -7,6 +7,7 @@ import { recorderSupported, startRecording } from '../lib/recorder.js'
 import { saveRecording } from '../lib/recordings.js'
 import { dateKey } from '../lib/streak.js'
 import PinyinLine from '../components/PinyinLine.vue'
+import { minReadSeconds } from '../lib/piece.js'
 
 const props = defineProps({ subject: String, index: Number })
 const store = useAppStore()
@@ -22,6 +23,18 @@ const micError = ref('')
 const micDenied = ref(false)
 const celebrate = ref('') // '', 'done', 'star'
 const busy = ref(false)
+// A read only counts after a plausible reading time, so two quick taps on
+// 读完一遍 can't finish a piece. The countdown starts when the piece opens
+// and restarts after each counted read.
+const cooldown = ref(0)
+let cooldownTimer = null
+function startCooldown(seconds) {
+  clearInterval(cooldownTimer)
+  cooldown.value = seconds
+  cooldownTimer = setInterval(() => {
+    if (--cooldown.value <= 0) clearInterval(cooldownTimer)
+  }, 1000)
+}
 const starting = ref(false)
 let playToken = 0
 
@@ -48,6 +61,7 @@ watch(
     const p = await store.getPiece(it.pieceId)
     if (idx !== props.index || subj !== props.subject) return
     piece.value = p
+    if (p) startCooldown(minReadSeconds(p))
     // Resolve audio URLs now so the play tap can start audio synchronously
     // (iOS drops the user gesture across an IndexedDB await).
     if (p) await player.prepare(p)
@@ -116,7 +130,7 @@ async function playMine() {
 }
 
 async function markRead() {
-  if (busy.value || !item.value) return
+  if (busy.value || cooldown.value > 0 || !item.value) return
   busy.value = true
   try {
     const times = item.value.times
@@ -133,6 +147,8 @@ async function markRead() {
     if ((done[index] ?? 0) >= times) {
       const next = items.value.findIndex((it, i) => (done[i] ?? 0) < it.times)
       if (next >= 0) router.replace(`/read/${subject}/${next}`)
+    } else if (piece.value) {
+      startCooldown(minReadSeconds(piece.value))
     }
   } finally {
     busy.value = false
@@ -140,6 +156,7 @@ async function markRead() {
 }
 
 onUnmounted(() => {
+  clearInterval(cooldownTimer)
   player.dispose()
   const r = recording.value
   recording.value = null
@@ -194,7 +211,9 @@ onUnmounted(() => {
           {{ recording ? '⏺ 录音中…点击结束' : '🎙 录一遍' }}
         </button>
         <button :disabled="!lastRecording" @click="playMine">👂 听我读的</button>
-        <button class="primary" :disabled="busy" @click="markRead">读完一遍 ✓</button>
+        <button class="primary" :disabled="busy || cooldown > 0" @click="markRead">
+          {{ cooldown > 0 ? `读完一遍 ✓（${cooldown}）` : '读完一遍 ✓' }}
+        </button>
         <p v-if="micError" class="error">{{ micError }}</p>
       </section>
     </div>
