@@ -142,35 +142,26 @@ class RealDataTest(unittest.TestCase):
             self.assertFalse(g1_ids & text_ids)
             self.assertTrue(all(n.startswith("pieces/cnt-") for n in text_ids))
 
-    def test_build_real_g2_pack(self):
+    def test_build_real_full_grade_packs(self):
         with tempfile.TemporaryDirectory() as d:
             packs = bp.build_all(ROOT / "data", Path(d))
-            if "g2" not in packs:
-                self.skipTest("需要二年级完整数据")
-            with zipfile.ZipFile(packs["g2"]) as z:
-                manifest = json.loads(z.read("manifest.json"))
-                names = z.namelist()
             with zipfile.ZipFile(packs["text"]) as z:
                 text_plans = json.loads(z.read("manifest.json"))["plans"]
-            self.assertEqual(manifest["plans"], ["cn-8", "cn-32"])
-            self.assertTrue(all(n.startswith("pieces/cn-") for n in names if n.startswith("pieces/")))
-            self.assertTrue(any(n.startswith("audio/") for n in names))
-            self.assertNotIn("cn-8", text_plans)
-            self.assertNotIn("cn-32", text_plans)
-
-    def test_build_real_g3_pack(self):
-        with tempfile.TemporaryDirectory() as d:
-            packs = bp.build_all(ROOT / "data", Path(d))
-            if "g3" not in packs:
-                self.skipTest("需要三年级完整数据")
-            with zipfile.ZipFile(packs["g3"]) as z:
-                manifest = json.loads(z.read("manifest.json"))
-                names = z.namelist()
-            with zipfile.ZipFile(packs["text"]) as z:
-                text_plans = json.loads(z.read("manifest.json"))["plans"]
-            self.assertEqual(manifest["plans"], ["cn-9", "cn-33"])
-            self.assertTrue(any(n.startswith("audio/") for n in names))
-            self.assertEqual(text_plans, ["cn-10", "cn-34", "cn-11", "cn-35", "cn-12", "cn-36"])
+            built = [k for k in bp.FULL_CN if k in packs]
+            if not built:
+                self.skipTest("需要整年级完整数据")
+            for pack_id in built:
+                with self.subTest(pack=pack_id):
+                    grades = bp.FULL_CN[pack_id][1]
+                    with zipfile.ZipFile(packs[pack_id]) as z:
+                        manifest = json.loads(z.read("manifest.json"))
+                        names = z.namelist()
+                    self.assertEqual(manifest["plans"], [f"cn-{g}" for g in grades])
+                    pieces = [n for n in names if n.startswith("pieces/")]
+                    self.assertTrue(pieces and all(n.startswith("pieces/cn-") for n in pieces))
+                    self.assertEqual(sum(n.startswith("audio/") for n in names), len(pieces))
+                    for g in grades:
+                        self.assertNotIn(f"cn-{g}", text_plans)
 
     @unittest.skipUnless((ROOT / "data/raw/en/2").exists(), "需要英语中高级数据")
     def test_build_real_en_pack(self):
