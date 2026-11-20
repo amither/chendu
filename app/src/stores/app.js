@@ -13,8 +13,8 @@ export const useAppStore = defineStore('app', () => {
   const progress = ref({})
   const checkins = ref({})
 const DEFAULT_TTS = {
-  cn: { voiceURI: '', rate: 0.8, engine: 'system', dsVoice: 'stella' },
-  en: { voiceURI: '', rate: 0.85, engine: 'system', dsVoice: 'stella' },
+  cn: { voiceURI: '', rate: 0.8, engine: 'system', dsVoice: 'stella', preferReal: true },
+  en: { voiceURI: '', rate: 0.85, engine: 'system', dsVoice: 'stella', preferReal: true },
 }
 const DEFAULT_SCORING = { key: '', auto: true }
   const withDefaults = (s = {}) => ({
@@ -158,11 +158,12 @@ const DEFAULT_SCORING = { key: '', auto: true }
     await load()
   }
 
-  // DeepSeek voice for lines without real audio, or null to use the system voice.
+  // DeepSeek voice to read with, or null for the system voice. replaceReal:
+  // also use it instead of the pack's real recordings.
   function cloudTts(subject) {
     const t = settings.value.tts[subject]
     const key = settings.value.scoring.key
-    return t?.engine === 'deepseek' && key ? { key, voice: t.dsVoice } : null
+    return t?.engine === 'deepseek' && key ? { key, voice: t.dsVoice, replaceReal: !t.preferReal } : null
   }
 
   return {

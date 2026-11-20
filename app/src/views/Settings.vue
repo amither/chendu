@@ -244,16 +244,21 @@ onMounted(() => {
 
     <section class="card">
       <h2>朗读声音</h2>
-      <p class="muted">没有真人朗读的篇目（如五、六年级）用这里选的声音朗读。</p>
+      <p class="muted">"听范读"用的声音。一到四年级语文和英语带真人朗读，可以选择保留真人朗读，或全部换成 DeepSeek；五、六年级语文没有真人朗读。</p>
       <div v-for="s in ['cn', 'en']" :key="s" class="row tts-row">
         <strong>{{ NAMES[s] }}</strong>
         <select :value="store.settings.tts[s].engine" @change="setTts(s, 'engine', $event.target.value)">
-          <option value="system">iPad 系统语音</option>
+          <option value="system">真人朗读 / iPad 系统语音</option>
           <option value="deepseek">DeepSeek 朗读</option>
         </select>
         <template v-if="store.settings.tts[s].engine === 'deepseek'">
           <select :value="store.settings.tts[s].dsVoice" @change="setTts(s, 'dsVoice', $event.target.value)">
             <option v-for="v in DS_VOICES" :key="v.id" :value="v.id">{{ v.label }}</option>
+          </select>
+          <select :value="store.settings.tts[s].preferReal ? 'real' : 'all'"
+                  @change="setTts(s, 'preferReal', $event.target.value === 'real')">
+            <option value="real">有真人朗读时用真人</option>
+            <option value="all">全部用 DeepSeek</option>
           </select>
         </template>
         <template v-else>

@@ -86,7 +86,15 @@ export function createPlayer(opts = {}) {
     return (await (await getDB()).get('audio', path)) ?? null
   }
 
-  async function prepare(piece) {
+  // The piece as it will be read: without its real recordings when the parent
+  // chose DeepSeek over them, so every line is synthesized instead.
+  function asRead(piece) {
+    if (!opts.cloud?.(piece.subject)?.replaceReal) return piece
+    return { ...piece, audio: undefined, lines: piece.lines.map(({ audio, ...line }) => line) }
+  }
+
+  async function prepare(original) {
+    const piece = asRead(original)
     const seq = ++prepSeq
     const paths = [piece.audio, ...piece.lines.map((l) => l.audio)].filter(Boolean)
     const map = new Map()
@@ -195,10 +203,11 @@ export function createPlayer(opts = {}) {
     })
   }
 
-  async function play(piece, onLine) {
+  async function play(original, onLine) {
     stop()
     const my = ++token
-    const ready = isPrepared(piece)
+    const ready = isPrepared(original)
+    const piece = ready ? prepared.piece : asRead(original)
     let last = null
     const emit = (i) => {
       if (i !== last) {

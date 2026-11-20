@@ -122,6 +122,20 @@ test('tts engine defaults to system; cloudTts needs deepseek engine and a key', 
   await s.setSetting('tts', { ...s.settings.tts, cn: { ...s.settings.tts.cn, engine: 'deepseek' } })
   expect(s.cloudTts('cn')).toBeNull() // no key yet
   await s.setSetting('scoring', { key: 'sk-x', auto: true })
-  expect(s.cloudTts('cn')).toEqual({ key: 'sk-x', voice: 'stella' })
+  expect(s.cloudTts('cn')).toEqual({ key: 'sk-x', voice: 'stella', replaceReal: false })
+  expect(s.cloudTts('en')).toBeNull()
+})
+
+test('cloudTts says whether DeepSeek also replaces real recordings', async () => {
+  const s = useAppStore()
+  await s.load()
+  expect(s.settings.tts.en.preferReal).toBe(true)
+  await s.setSetting('scoring', { key: 'sk-x', auto: true })
+  await s.setSetting('tts', { ...s.settings.tts, en: { ...s.settings.tts.en, engine: 'deepseek' } })
+  expect(s.cloudTts('en')).toEqual({ key: 'sk-x', voice: 'stella', replaceReal: false })
+  await s.setSetting('tts', { ...s.settings.tts, en: { ...s.settings.tts.en, preferReal: false } })
+  expect(s.cloudTts('en')).toEqual({ key: 'sk-x', voice: 'stella', replaceReal: true })
+  // Without DeepSeek selected the real-recording choice doesn't matter.
+  await s.setSetting('tts', { ...s.settings.tts, en: { ...s.settings.tts.en, engine: 'system' } })
   expect(s.cloudTts('en')).toBeNull()
 })
