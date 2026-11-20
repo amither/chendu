@@ -12,9 +12,10 @@ ROOT = Path(__file__).resolve().parent.parent
 CN_ORDER = [7, 31, 8, 32, 9, 33, 10, 34, 11, 35, 12, 36]
 CN_TITLES = {7: "一年级上", 31: "一年级下", 8: "二年级上", 32: "二年级下", 9: "三年级上", 33: "三年级下",
              10: "四年级上", 34: "四年级下", 11: "五年级上", 35: "五年级下", 12: "六年级上", 36: "六年级下"}
-EN_TITLES = {1: "英语初级（1-2年级）"}
+EN_TITLES = {1: "英语初级（1-2年级）", 2: "英语中级（3-4年级）", 3: "英语高级（5-6年级）"}
 G1_CN = [7, 31]
 G1_EN = [1]
+MORE_EN = [2, 3]
 TEXT_CN = [8, 32, 9, 33, 10, 34, 11, 35, 12, 36]
 
 
@@ -124,6 +125,16 @@ def _records(week_files):
                 yield from d["records"]
 
 
+def _add_en(raw, books, plans, pieces):
+    for b in books:
+        weeks = _weeks(raw, "en", b)
+        plans.append(build_plan("en", b, weeks, "en"))
+        for r in _records(weeks):
+            sid = r["situational_id"]
+            if f"en-{sid}" not in pieces:
+                pieces[f"en-{sid}"] = en_piece(json.loads((raw / "prose" / f"{sid}.json").read_text()))
+
+
 def build_all(data_dir, out_dir):
     raw = data_dir / "raw"
     plans, pieces = [], {}
@@ -134,14 +145,9 @@ def build_all(data_dir, out_dir):
             pid = r["poem_id"]
             if f"cn-{pid}" not in pieces:
                 pieces[f"cn-{pid}"] = cn_piece_full(json.loads((raw / "poems" / f"{pid}.json").read_text()))
-    for b in G1_EN:
-        weeks = _weeks(raw, "en", b)
-        plans.append(build_plan("en", b, weeks, "en"))
-        for r in _records(weeks):
-            sid = r["situational_id"]
-            if f"en-{sid}" not in pieces:
-                pieces[f"en-{sid}"] = en_piece(json.loads((raw / "prose" / f"{sid}.json").read_text()))
-    g1 = write_pack(out_dir / "chendu-g1.zip", "g1", "一年级（语文上下册 + 英语初级）", plans,
+    _add_en(raw, G1_EN, plans, pieces)
+    packs = {}
+    packs["g1"] = write_pack(out_dir / "chendu-g1.zip", "g1", "一年级（语文上下册 + 英语初级）", plans,
                     list(pieces.values()), data_dir / "audio")
 
     plans, pieces = [], {}
@@ -150,11 +156,17 @@ def build_all(data_dir, out_dir):
         plans.append(build_plan("cn", g, weeks, "cnt"))
         for r in _records(weeks):
             pieces.setdefault(f"cnt-{r['poem_id']}", cn_piece_text(r))
-    text = write_pack(out_dir / "chendu-text.zip", "text", "二到六年级语文（原文）", plans,
-                      list(pieces.values()), data_dir / "audio")
-    return g1, text
+    packs["text"] = write_pack(out_dir / "chendu-text.zip", "text", "二到六年级语文（原文）", plans,
+                               list(pieces.values()), data_dir / "audio")
+
+    if all((raw / "en" / str(b)).exists() for b in MORE_EN):
+        plans, pieces = [], {}
+        _add_en(raw, MORE_EN, plans, pieces)
+        packs["en"] = write_pack(out_dir / "chendu-en.zip", "en23", "英语中级 + 高级", plans,
+                                 list(pieces.values()), data_dir / "audio")
+    return packs
 
 
 if __name__ == "__main__":
-    for p in build_all(ROOT / "data", ROOT / "dist-packs"):
+    for p in build_all(ROOT / "data", ROOT / "dist-packs").values():
         print(p, f"{p.stat().st_size / 1e6:.1f} MB", file=sys.stderr)

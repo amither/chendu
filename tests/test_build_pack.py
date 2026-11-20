@@ -124,7 +124,8 @@ class WritePackTest(unittest.TestCase):
 class RealDataTest(unittest.TestCase):
     def test_build_real_packs(self):
         with tempfile.TemporaryDirectory() as d:
-            g1, text = bp.build_all(ROOT / "data", Path(d))
+            packs = bp.build_all(ROOT / "data", Path(d))
+            g1, text = packs["g1"], packs["text"]
             with zipfile.ZipFile(g1) as z:
                 names = z.namelist()
                 self.assertEqual(sum(n.startswith("pieces/cn-") for n in names), 288)
@@ -135,6 +136,21 @@ class RealDataTest(unittest.TestCase):
                 self.assertFalse(any(n.startswith("audio/") for n in z.namelist()))
             self.assertFalse(g1_ids & text_ids)
             self.assertTrue(all(n.startswith("pieces/cnt-") for n in text_ids))
+
+    @unittest.skipUnless((ROOT / "data/raw/en/2").exists(), "需要英语中高级数据")
+    def test_build_real_en_pack(self):
+        with tempfile.TemporaryDirectory() as d:
+            packs = bp.build_all(ROOT / "data", Path(d))
+            with zipfile.ZipFile(packs["en"]) as z:
+                names = z.namelist()
+                manifest = json.loads(z.read("manifest.json"))
+                en_ids = {n for n in names if n.startswith("pieces/")}
+            with zipfile.ZipFile(packs["g1"]) as z:
+                g1_ids = {n for n in z.namelist() if n.startswith("pieces/")}
+            self.assertEqual(manifest["plans"], ["en-2", "en-3"])
+            self.assertEqual(len(en_ids), 112)
+            self.assertTrue(any(n.startswith("audio/") for n in names))
+            self.assertFalse(en_ids & g1_ids)
 
 
 if __name__ == "__main__":
