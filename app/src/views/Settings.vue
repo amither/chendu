@@ -8,6 +8,8 @@ import { needRefresh, applyUpdate, checkForUpdate, APP_VERSION } from '../lib/sw
 import { updateStatus } from '../lib/version.js'
 import { loadVoices, voicesFor, voiceQuality } from '../lib/voices.js'
 import { createPlayer } from '../lib/player.js'
+import { transcribe, messageFor } from '../lib/deepseek.js'
+import { encodeWav } from '../lib/wav.js'
 
 const store = useAppStore()
 const router = useRouter()
@@ -28,6 +30,28 @@ async function setTts(subject, key, value) {
   await store.setSetting('tts', tts)
 }
 onUnmounted(() => ttsPlayer.dispose())
+
+// ---- 录音打分
+const scoringMsg = ref('')
+const testing = ref(false)
+async function setScoring(key, value) {
+  await store.setSetting('scoring', { ...store.settings.scoring, [key]: value })
+  scoringMsg.value = ''
+}
+// One second of silence: checks the key and network without real audio.
+async function testScoring() {
+  testing.value = true
+  scoringMsg.value = ''
+  try {
+    const wav = new Blob([encodeWav(new Float32Array(16000), 16000)], { type: 'audio/wav' })
+    await transcribe(store.settings.scoring.key, wav)
+    scoringMsg.value = '密钥可用 ✓'
+  } catch (e) {
+    scoringMsg.value = messageFor(e)
+  } finally {
+    testing.value = false
+  }
+}
 
 // ---- 版本和更新
 const checking = ref(false)
@@ -228,6 +252,21 @@ onMounted(() => {
     </section>
 
     <section class="card">
+      <h2>录音打分</h2>
+      <p class="muted">孩子每录一遍，用 DeepSeek 识别录音并打分（只作鼓励，不影响进度）。录音会上传到 DeepSeek；密钥只保存在这台 iPad 上，不会出现在备份里。</p>
+      <div class="row">
+        <input class="key" type="password" autocomplete="off" placeholder="DeepSeek API 密钥 sk-…"
+               :value="store.settings.scoring.key" @input="setScoring('key', $event.target.value.trim())" />
+        <label class="check">
+          <input type="checkbox" :checked="store.settings.scoring.auto" @change="setScoring('auto', $event.target.checked)" />
+          录完自动打分
+        </label>
+        <button :disabled="!store.settings.scoring.key || testing" @click="testScoring">{{ testing ? '测试中…' : '测试' }}</button>
+      </div>
+      <p v-if="scoringMsg">{{ scoringMsg }}</p>
+    </section>
+
+    <section class="card">
       <h2>打卡日历</h2>
       <div class="row">
         <button @click="shiftMonth(-1)">‹</button>
@@ -283,4 +322,7 @@ select, input[type=file] { font-size: 22px; padding: 12px; border-radius: 12px; 
 .warn { color: #c0392b; }
 .tts-row { margin-bottom: 12px; }
 .tts-row strong { width: 48px; }
+.key { font-size: 20px; padding: 12px; border-radius: 12px; border: 1px solid #ddd; min-width: 360px; }
+.check { display: flex; align-items: center; gap: 8px; }
+.check input { width: 24px; height: 24px; }
 </style>

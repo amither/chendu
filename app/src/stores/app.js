@@ -13,10 +13,12 @@ export const useAppStore = defineStore('app', () => {
   const progress = ref({})
   const checkins = ref({})
 const DEFAULT_TTS = { cn: { voiceURI: '', rate: 0.8 }, en: { voiceURI: '', rate: 0.85 } }
+const DEFAULT_SCORING = { key: '', auto: true }
   const withDefaults = (s = {}) => ({
     pinyin: true,
     ...s,
     tts: { cn: { ...DEFAULT_TTS.cn, ...s.tts?.cn }, en: { ...DEFAULT_TTS.en, ...s.tts?.en } },
+    scoring: { ...DEFAULT_SCORING, ...s.scoring },
   })
   const settings = ref(withDefaults())
   const loaded = ref(false)
@@ -111,7 +113,8 @@ const DEFAULT_TTS = { cn: { voiceURI: '', rate: 0.8 }, en: { voiceURI: '', rate:
       version: 1,
       progress: Object.values(progress.value),
       checkins: Object.values(checkins.value),
-      settings: settings.value,
+      // The API key stays on this iPad.
+      settings: { ...settings.value, scoring: { ...settings.value.scoring, key: '' } },
     })
   }
 
@@ -140,7 +143,10 @@ const DEFAULT_TTS = { cn: { voiceURI: '', rate: 0.8 }, en: { voiceURI: '', rate:
       const reqs = [tx.objectStore('progress').clear(), tx.objectStore('checkins').clear()]
       for (const p of backup.progress) reqs.push(tx.objectStore('progress').put(p))
       for (const c of backup.checkins) reqs.push(tx.objectStore('checkins').put(c))
-      reqs.push(tx.objectStore('settings').put(backup.settings ?? {}, 'app'))
+      reqs.push(tx.objectStore('settings').put(
+        { ...(backup.settings ?? {}), scoring: { ...backup.settings?.scoring, key: settings.value.scoring.key } },
+        'app',
+      ))
       await Promise.all([...reqs, tx.done])
     } catch (e) {
       try { tx.abort() } catch { /* already finished */ }

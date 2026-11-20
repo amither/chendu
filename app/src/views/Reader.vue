@@ -8,6 +8,9 @@ import { saveRecording } from '../lib/recordings.js'
 import { dateKey } from '../lib/streak.js'
 import PinyinLine from '../components/PinyinLine.vue'
 import { minReadSeconds } from '../lib/piece.js'
+import { scoreRecording } from '../lib/scorer.js'
+import { messageFor } from '../lib/deepseek.js'
+import { tokensFor, marksFor, splitEnLine } from '../lib/scoring.js'
 
 const props = defineProps({ subject: String, index: Number })
 const store = useAppStore()
@@ -36,6 +39,31 @@ function startCooldown(seconds) {
   }, 1000)
 }
 const starting = ref(false)
+
+// Latest score for this piece: { status: 'scoring' | 'done' | 'error', score?, message? }
+const scoring = ref(null)
+let scoreToken = 0
+const marks = computed(() =>
+  scoring.value?.status === 'done' && piece.value ? marksFor(tokensFor(piece.value), scoring.value.score) : {})
+
+function clearScore() {
+  scoreToken++
+  scoring.value = null
+}
+
+// Runs in the background: the child can keep reading while it scores.
+async function maybeScore(rec, p) {
+  const { key, auto } = store.settings.scoring
+  if (!key || !auto) return
+  const my = ++scoreToken
+  scoring.value = { status: 'scoring' }
+  try {
+    const score = await scoreRecording(rec, p, key)
+    if (my === scoreToken) scoring.value = { status: 'done', score }
+  } catch (e) {
+    if (my === scoreToken) scoring.value = { status: 'error', message: messageFor(e) }
+  }
+}
 let playToken = 0
 
 const items = computed(() => store.todayItems(props.subject))
@@ -49,6 +77,7 @@ watch(
     const idx = props.index
     const subj = props.subject
     stopAll()
+    clearScore()
     lastRecording.value = null
     celebrate.value = ''
     micError.value = ''
@@ -94,11 +123,11 @@ async function toggleRecord() {
     const { blob, durationSec } = await recording.value.stop()
     recording.value = null
     lastRecording.value = blob
+    const p = piece.value
     try {
-      await saveRecording({
-        date: dateKey(), subject: props.subject, pieceId: piece.value.id,
-        round: count.value + 1, durationSec, blob,
-      })
+      const rec = { date: dateKey(), subject: props.subject, pieceId: p.id, round: count.value + 1, durationSec, blob }
+      const id = await saveRecording(rec)
+      maybeScore({ ...rec, id }, p)
     } catch {
       micError.value = '录音保存失败'
     }
@@ -106,6 +135,7 @@ async function toggleRecord() {
   }
   if (starting.value) return
   stopAll()
+  clearScore()
   starting.value = true
   try {
     recording.value = await startRecording()
@@ -194,12 +224,17 @@ onUnmounted(() => {
           {{ piece.subject === 'cn' ? [piece.dynasty, piece.author].filter(Boolean).join(' · ') : piece.titleTranslate }}
         </p>
         <template v-if="piece.subject === 'cn'">
-          <PinyinLine v-for="(line, i) in piece.lines" :key="i" :line="line"
+          <PinyinLine v-for="(line, i) in piece.lines" :key="i" :line="line" :marks="marks[i]"
                       :show-pinyin="store.settings.pinyin" :active="i === activeLine" />
         </template>
         <template v-else>
           <div v-for="(line, i) in piece.lines" :key="i" class="en-line" :class="{ active: i === activeLine }">
-            <p class="en">{{ line.text }}</p>
+            <p class="en">
+              <template v-for="(part, k) in splitEnLine(line.text)" :key="k">
+                <span v-if="part.word !== null" :class="marks[i]?.[part.word]">{{ part.text }}</span>
+                <template v-else>{{ part.text }}</template>
+              </template>
+            </p>
             <p class="zh muted">{{ line.translate }}</p>
           </div>
         </template>
@@ -214,6 +249,16 @@ onUnmounted(() => {
         <button class="primary" :disabled="busy || cooldown > 0" @click="markRead">
           {{ cooldown > 0 ? `读完一遍 ✓（${cooldown}）` : '读完一遍 ✓' }}
         </button>
+        <div v-if="scoring" class="score-card" :class="scoring.status">
+          <template v-if="scoring.status === 'scoring'">打分中…</template>
+          <template v-else-if="scoring.status === 'error'">{{ scoring.message }}</template>
+          <template v-else>
+            <div class="stars">{{ scoring.score.stars ? '⭐'.repeat(scoring.score.stars) : '再试一次也很棒' }}</div>
+            <div class="num">{{ scoring.score.score }} 分</div>
+            <div class="muted">读对 {{ scoring.score.n - scoring.score.wrong.length - scoring.score.missed.length }}/{{ scoring.score.n }} {{ subject === 'cn' ? '字' : '词' }}</div>
+            <div v-if="scoring.score.comment" class="comment">{{ scoring.score.comment }}</div>
+          </template>
+        </div>
         <p v-if="micError" class="error">{{ micError }}</p>
       </section>
     </div>
@@ -229,6 +274,7 @@ onUnmounted(() => {
   .text { flex: 1; min-height: 0; }
   .actions { flex: none; flex-direction: row !important; flex-wrap: wrap; align-self: stretch; }
   .actions button { flex: 1 1 40%; }
+  .score-card { flex: 1 1 100%; }
 }
 .text { min-height: 0; overflow-y: auto; }
 .meta { font-size: 24px; margin-top: 0; }
@@ -241,6 +287,13 @@ onUnmounted(() => {
 .en { font-size: 36px; line-height: 1.5; margin: 0; white-space: pre-line; }
 .zh { font-size: 22px; margin: 4px 0 0; white-space: pre-line; }
 .error { color: #c0392b; font-size: 18px; }
+.score-card { background: var(--card); border-radius: 20px; padding: 16px; text-align: center; font-size: 22px; box-shadow: 0 2px 6px rgba(0,0,0,.08); }
+.score-card.scoring { color: var(--muted); }
+.score-card .stars { font-size: 34px; }
+.score-card .num { font-size: 30px; font-weight: 700; color: var(--accent); }
+.score-card .comment { font-size: 20px; margin-top: 6px; }
+.en span.wrong { color: #d93025; text-decoration: underline wavy #d93025; }
+.en span.missed { color: #c4bcb2; }
 .celebrate { text-align: center; padding-top: 120px; font-size: 32px; }
 .celebrate .big { font-size: 160px; animation: pop-in 0.6s ease-out; }
 @keyframes pop-in {

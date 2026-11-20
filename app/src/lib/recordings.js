@@ -36,3 +36,11 @@ export function groupByDate(list) {
 export function totalBytes(list) {
   return list.reduce((sum, r) => sum + r.blob.size, 0)
 }
+
+export async function saveScore(id, score) {
+  const db = await getDB()
+  const tx = db.transaction('recordings', 'readwrite')
+  const rec = await tx.store.get(id)
+  if (rec) await tx.store.put({ ...rec, score })
+  await tx.done
+}

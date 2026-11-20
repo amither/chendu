@@ -4,6 +4,8 @@ import { useRouter } from 'vue-router'
 import { useAppStore } from '../stores/app.js'
 import { listRecordings, deleteRecording, deleteMonth, groupByDate, totalBytes } from '../lib/recordings.js'
 import { createPlayer } from '../lib/player.js'
+import { scoreRecording } from '../lib/scorer.js'
+import { messageFor } from '../lib/deepseek.js'
 
 const store = useAppStore()
 const router = useRouter()
@@ -64,6 +66,22 @@ async function removeMonth(m) {
   }
 }
 
+const scoringIds = ref({})
+async function rescore(r) {
+  const piece = await store.getPiece(r.pieceId)
+  if (!piece) return alert('找不到这篇课文，可能需要重新导入内容包')
+  scoringIds.value = { ...scoringIds.value, [r.id]: true }
+  try {
+    await scoreRecording(r, piece, store.settings.scoring.key)
+    await refresh()
+  } catch (e) {
+    alert(messageFor(e))
+  } finally {
+    const { [r.id]: _, ...rest } = scoringIds.value
+    scoringIds.value = rest
+  }
+}
+
 onMounted(refresh)
 onUnmounted(() => player.dispose())
 </script>
@@ -85,7 +103,16 @@ onUnmounted(() => player.dispose())
       <h2>{{ g.date }}</h2>
       <div v-for="r in g.items" :key="r.id" class="item">
         <span class="subj">{{ r.subject === 'cn' ? '语' : '英' }}</span>
-        <span class="title">{{ titles[r.pieceId] }} · 第 {{ r.round }} 遍 · {{ r.durationSec }} 秒</span>
+        <span class="title">
+          {{ titles[r.pieceId] }} · 第 {{ r.round }} 遍 · {{ r.durationSec }} 秒
+          <template v-if="r.score">
+            · <b class="score">{{ r.score.stars ? '⭐'.repeat(r.score.stars) : '' }} {{ r.score.score }} 分</b>
+            <small v-if="r.score.comment" class="muted comment">{{ r.score.comment }}</small>
+          </template>
+        </span>
+        <button v-if="store.settings.scoring.key" :disabled="scoringIds[r.id]" @click="rescore(r)">
+          {{ scoringIds[r.id] ? '打分中…' : r.score ? '重新打分' : '打分' }}
+        </button>
         <button @click="play(r)">{{ playingId === r.id ? '⏹' : '▶' }}</button>
         <button @click="remove(r)">🗑</button>
       </div>
@@ -100,6 +127,8 @@ onUnmounted(() => player.dispose())
 .group h2 { margin-top: 0; }
 .item { display: flex; align-items: center; gap: 16px; padding: 8px 0; font-size: 22px; }
 .title { flex: 1; }
+.score { color: var(--accent); }
+.comment { display: block; font-size: 18px; }
 .subj { background: var(--accent-soft); border-radius: 10px; padding: 4px 10px; }
 .item button { min-height: 52px; padding: 8px 18px; }
 </style>

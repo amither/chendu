@@ -101,3 +101,15 @@ test('load drops progress whose plan is gone and has no replacement', async () =
   expect(s.progress.en).toBeUndefined()
   expect(await db.get('progress', 'en')).toBeUndefined()
 })
+
+test('scoring settings default, backup leaves the key out, restore keeps the local key', async () => {
+  const s = useAppStore()
+  await s.load()
+  expect(s.settings.scoring).toEqual({ key: '', auto: true })
+  await s.setSetting('scoring', { key: 'sk-secret', auto: false })
+  const backup = s.exportBackup()
+  expect(JSON.stringify(backup)).not.toContain('sk-secret')
+  expect(backup.settings.scoring.auto).toBe(false)
+  await s.importBackup(backup)
+  expect(s.settings.scoring).toEqual({ key: 'sk-secret', auto: false })
+})
