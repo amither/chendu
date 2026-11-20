@@ -1,14 +1,33 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '../stores/app.js'
 import { importPack } from '../lib/pack.js'
 import { dateKey } from '../lib/streak.js'
 import { needRefresh, applyUpdate, checkForUpdate, APP_VERSION } from '../lib/sw.js'
 import { updateStatus } from '../lib/version.js'
+import { loadVoices, voicesFor, voiceQuality } from '../lib/voices.js'
+import { createPlayer } from '../lib/player.js'
 
 const store = useAppStore()
 const router = useRouter()
+
+// ---- 朗读声音（没有真人音频时的 TTS）
+const QUALITY_LABEL = { premium: '高级', enhanced: '增强', standard: '' }
+const SAMPLE = { cn: '小朋友们早上好，我们一起来晨读吧。', en: "Good morning! Let's read together." }
+const RATES = [0.6, 0.7, 0.8, 0.9, 1.0]
+const voiceLists = ref({ cn: [], en: [] })
+const ttsPlayer = createPlayer({ tts: () => store.settings.tts })
+const hasGoodVoice = (s) => voiceLists.value[s].some((v) => voiceQuality(v) !== 'standard')
+async function refreshVoices() {
+  const all = await loadVoices()
+  voiceLists.value = { cn: voicesFor(all, 'cn'), en: voicesFor(all, 'en') }
+}
+async function setTts(subject, key, value) {
+  const tts = { ...store.settings.tts, [subject]: { ...store.settings.tts[subject], [key]: value } }
+  await store.setSetting('tts', tts)
+}
+onUnmounted(() => ttsPlayer.dispose())
 
 // ---- 版本和更新
 const checking = ref(false)
@@ -140,6 +159,7 @@ async function refreshStorage() {
 }
 onMounted(() => {
   resetPicks()
+  refreshVoices()
   refreshStorage()
 })
 </script>
@@ -184,6 +204,27 @@ onMounted(() => {
         </select>
         <button class="primary" @click="savePlan(s)">保存</button>
       </div>
+    </section>
+
+    <section class="card">
+      <h2>朗读声音</h2>
+      <p class="muted">没有真人朗读的篇目（如五、六年级）用 iPad 自带的语音朗读。</p>
+      <div v-for="s in ['cn', 'en']" :key="s" class="row tts-row">
+        <strong>{{ NAMES[s] }}</strong>
+        <select :value="store.settings.tts[s].voiceURI" @change="setTts(s, 'voiceURI', $event.target.value)">
+          <option value="">自动选择最好的</option>
+          <option v-for="v in voiceLists[s]" :key="v.voiceURI" :value="v.voiceURI">
+            {{ v.name }}{{ QUALITY_LABEL[voiceQuality(v)] ? `（${QUALITY_LABEL[voiceQuality(v)]}）` : '' }} · {{ v.lang }}
+          </option>
+        </select>
+        <select :value="store.settings.tts[s].rate" @change="setTts(s, 'rate', Number($event.target.value))">
+          <option v-for="r in RATES" :key="r" :value="r">语速 {{ r }}</option>
+        </select>
+        <button @click="ttsPlayer.sample(SAMPLE[s], s)">试听</button>
+      </div>
+      <p v-for="s in ['cn', 'en']" :key="'hint-' + s" v-show="!hasGoodVoice(s)" class="warn">
+        {{ NAMES[s] }}还没有"增强"或"高级"语音，听起来会比较生硬。可以在 iPad「设置 → 辅助功能 → 朗读内容 → 声音 → {{ s === 'cn' ? '中文' : '英语' }}」里下载带"增强"或"高级"字样的声音，下载后回到这里重新打开设置。
+      </p>
     </section>
 
     <section class="card">
@@ -240,4 +281,6 @@ select, input[type=file] { font-size: 22px; padding: 12px; border-radius: 12px; 
 .file-btn { position: relative; padding: 16px 24px; background: var(--card); border-radius: 20px; box-shadow: 0 2px 6px rgba(0,0,0,.08); }
 .file-btn input { position: absolute; opacity: 0; width: 1px; height: 1px; overflow: hidden; }
 .warn { color: #c0392b; }
+.tts-row { margin-bottom: 12px; }
+.tts-row strong { width: 48px; }
 </style>

@@ -12,7 +12,13 @@ export const useAppStore = defineStore('app', () => {
   const plans = ref({})
   const progress = ref({})
   const checkins = ref({})
-  const settings = ref({ pinyin: true })
+const DEFAULT_TTS = { cn: { voiceURI: '', rate: 0.8 }, en: { voiceURI: '', rate: 0.85 } }
+  const withDefaults = (s = {}) => ({
+    pinyin: true,
+    ...s,
+    tts: { cn: { ...DEFAULT_TTS.cn, ...s.tts?.cn }, en: { ...DEFAULT_TTS.en, ...s.tts?.en } },
+  })
+  const settings = ref(withDefaults())
   const loaded = ref(false)
   const pieceCache = new Map()
   const today = ref(dateKey())
@@ -29,7 +35,7 @@ export const useAppStore = defineStore('app', () => {
     plans.value = Object.fromEntries((await db.getAll('plans')).map((p) => [p.id, p]))
     progress.value = Object.fromEntries((await db.getAll('progress')).map((p) => [p.subject, p]))
     checkins.value = Object.fromEntries((await db.getAll('checkins')).map((c) => [c.date, c]))
-    settings.value = { pinyin: true, ...((await db.get('settings', 'app')) ?? {}) }
+    settings.value = withDefaults((await db.get('settings', 'app')) ?? {})
     pieceCache.clear()
     for (const subject of SUBJECTS) {
       const p = progress.value[subject]

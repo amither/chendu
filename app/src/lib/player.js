@@ -1,6 +1,7 @@
 import { getDB } from './db.js'
 import { countChars, estimateTimings, activeIndex } from './highlight.js'
 import { lineText } from './piece.js'
+import { pickVoice } from './voices.js'
 
 // Plays a piece's model reading. onLine(i) is called with the line being
 // read (-1 when nothing is), only when the index changes. Chinese uses one
@@ -12,7 +13,8 @@ import { lineText } from './piece.js'
 // user gesture, and a new element per line loses that permission. So there is
 // one persistent element, and prepare() resolves blob URLs ahead of time so
 // play() can call el.play() synchronously.
-export function createPlayer() {
+// opts.tts(): { cn: { voiceURI, rate }, en: { ... } } — the parent's TTS settings.
+export function createPlayer(opts = {}) {
   const el = typeof Audio !== 'undefined' ? new Audio() : null
   let token = 0
   let prepSeq = 0
@@ -108,7 +110,7 @@ export function createPlayer() {
     })
   }
 
-  function speak(text, lang) {
+  function speak(text, lang, subject) {
     return new Promise((resolve) => {
       if (typeof SpeechSynthesisUtterance === 'undefined' || typeof speechSynthesis === 'undefined') {
         return resolve()
@@ -121,8 +123,11 @@ export function createPlayer() {
       finish = done
       timer = setTimeout(done, text.length * 400 + 2000)
       const u = new SpeechSynthesisUtterance(text)
-      u.lang = lang
-      u.rate = 0.8
+      const tts = opts.tts?.()?.[subject] ?? {}
+      const voice = pickVoice(speechSynthesis.getVoices?.() ?? [], subject, tts.voiceURI)
+      if (voice) u.voice = voice
+      u.lang = voice?.lang ?? lang
+      u.rate = tts.rate ?? 0.8
       u.onend = done
       u.onerror = done
       speechSynthesis.speak(u)
@@ -167,7 +172,7 @@ export function createPlayer() {
         if (my !== token) return
         const r = u ? await playUrl(u) : 'none'
         if (my !== token) return
-        if (r === 'none' || r === 'blocked') await speak(lineText(line), lang)
+        if (r === 'none' || r === 'blocked') await speak(lineText(line), lang, piece.subject)
       }
     }
     if (my === token) {
@@ -190,5 +195,11 @@ export function createPlayer() {
     }
   }
 
-  return { prepare, play, playBlob, stop, dispose }
+  // Speaks one sample sentence with the current settings (for 试听).
+  async function sample(text, subject) {
+    stop()
+    await speak(text, subject === 'cn' ? 'zh-CN' : 'en-US', subject)
+  }
+
+  return { prepare, play, playBlob, stop, dispose, sample }
 }

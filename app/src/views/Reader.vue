@@ -11,7 +11,7 @@ import PinyinLine from '../components/PinyinLine.vue'
 const props = defineProps({ subject: String, index: Number })
 const store = useAppStore()
 const router = useRouter()
-const player = createPlayer()
+const player = createPlayer({ tts: () => store.settings.tts })
 
 const piece = ref(null)
 const activeLine = ref(-1)
