@@ -56,3 +56,19 @@ export async function blobToWav(blob, rate = 16000) {
   const samples = resample(mixdown(channels), audio.sampleRate, rate)
   return { wav: new Blob([encodeWav(samples, rate)], { type: 'audio/wav' }), seconds: audio.duration }
 }
+
+// DeepSeek streams WAV with 0xFFFFFFFF in the RIFF and data sizes; fill in
+// the real sizes so every player (Safari included) accepts the file.
+export function fixWavHeader(buf) {
+  const v = new DataView(buf)
+  const id = (o) => String.fromCharCode(v.getUint8(o), v.getUint8(o + 1), v.getUint8(o + 2), v.getUint8(o + 3))
+  if (buf.byteLength < 12 || id(0) !== 'RIFF' || id(8) !== 'WAVE') return buf
+  v.setUint32(4, buf.byteLength - 8, true)
+  for (let o = 12; o + 8 <= buf.byteLength; o += 8 + v.getUint32(o + 4, true)) {
+    if (id(o) === 'data') {
+      v.setUint32(o + 4, buf.byteLength - o - 8, true)
+      break
+    }
+  }
+  return buf
+}

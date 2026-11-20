@@ -10,6 +10,7 @@ import { loadVoices, voicesFor, voiceQuality } from '../lib/voices.js'
 import { createPlayer } from '../lib/player.js'
 import { transcribe, messageFor } from '../lib/deepseek.js'
 import { encodeWav } from '../lib/wav.js'
+import { ttsCacheStats, clearTtsCache } from '../lib/ttscache.js'
 
 const store = useAppStore()
 const router = useRouter()
@@ -19,7 +20,7 @@ const QUALITY_LABEL = { premium: '高级', enhanced: '增强', standard: '' }
 const SAMPLE = { cn: '小朋友们早上好，我们一起来晨读吧。', en: "Good morning! Let's read together." }
 const RATES = [0.6, 0.7, 0.8, 0.9, 1.0]
 const voiceLists = ref({ cn: [], en: [] })
-const ttsPlayer = createPlayer({ tts: () => store.settings.tts })
+const ttsPlayer = createPlayer({ tts: () => store.settings.tts, cloud: (s) => store.cloudTts(s) })
 const hasGoodVoice = (s) => voiceLists.value[s].some((v) => voiceQuality(v) !== 'standard')
 async function refreshVoices() {
   const all = await loadVoices()
@@ -28,6 +29,16 @@ async function refreshVoices() {
 async function setTts(subject, key, value) {
   const tts = { ...store.settings.tts, [subject]: { ...store.settings.tts[subject], [key]: value } }
   await store.setSetting('tts', tts)
+}
+const DS_VOICES = [{ id: 'stella', label: '女声 stella' }, { id: 'tide', label: '男声 tide' }]
+const ttsCache = ref({ count: 0, bytes: 0 })
+async function refreshTtsCache() {
+  ttsCache.value = await ttsCacheStats()
+}
+async function clearCache() {
+  if (!confirm('清空 DeepSeek 朗读缓存？下次朗读会重新生成。')) return
+  await clearTtsCache()
+  await refreshTtsCache()
 }
 onUnmounted(() => ttsPlayer.dispose())
 
@@ -185,6 +196,7 @@ onMounted(() => {
   resetPicks()
   refreshVoices()
   refreshStorage()
+  refreshTtsCache()
 })
 </script>
 
@@ -232,22 +244,40 @@ onMounted(() => {
 
     <section class="card">
       <h2>朗读声音</h2>
-      <p class="muted">没有真人朗读的篇目（如五、六年级）用 iPad 自带的语音朗读。</p>
+      <p class="muted">没有真人朗读的篇目（如五、六年级）用这里选的声音朗读。</p>
       <div v-for="s in ['cn', 'en']" :key="s" class="row tts-row">
         <strong>{{ NAMES[s] }}</strong>
-        <select :value="store.settings.tts[s].voiceURI" @change="setTts(s, 'voiceURI', $event.target.value)">
-          <option value="">自动选择最好的</option>
-          <option v-for="v in voiceLists[s]" :key="v.voiceURI" :value="v.voiceURI">
-            {{ v.name }}{{ QUALITY_LABEL[voiceQuality(v)] ? `（${QUALITY_LABEL[voiceQuality(v)]}）` : '' }} · {{ v.lang }}
-          </option>
+        <select :value="store.settings.tts[s].engine" @change="setTts(s, 'engine', $event.target.value)">
+          <option value="system">iPad 系统语音</option>
+          <option value="deepseek">DeepSeek 朗读</option>
         </select>
-        <select :value="store.settings.tts[s].rate" @change="setTts(s, 'rate', Number($event.target.value))">
-          <option v-for="r in RATES" :key="r" :value="r">语速 {{ r }}</option>
-        </select>
-        <button @click="ttsPlayer.sample(SAMPLE[s], s)">试听</button>
+        <template v-if="store.settings.tts[s].engine === 'deepseek'">
+          <select :value="store.settings.tts[s].dsVoice" @change="setTts(s, 'dsVoice', $event.target.value)">
+            <option v-for="v in DS_VOICES" :key="v.id" :value="v.id">{{ v.label }}</option>
+          </select>
+        </template>
+        <template v-else>
+          <select :value="store.settings.tts[s].voiceURI" @change="setTts(s, 'voiceURI', $event.target.value)">
+            <option value="">自动选择最好的</option>
+            <option v-for="v in voiceLists[s]" :key="v.voiceURI" :value="v.voiceURI">
+              {{ v.name }}{{ QUALITY_LABEL[voiceQuality(v)] ? `（${QUALITY_LABEL[voiceQuality(v)]}）` : '' }} · {{ v.lang }}
+            </option>
+          </select>
+          <select :value="store.settings.tts[s].rate" @change="setTts(s, 'rate', Number($event.target.value))">
+            <option v-for="r in RATES" :key="r" :value="r">语速 {{ r }}</option>
+          </select>
+        </template>
+        <button @click="ttsPlayer.sample(SAMPLE[s], s).then(refreshTtsCache)">试听</button>
       </div>
-      <p v-for="s in ['cn', 'en']" :key="'hint-' + s" v-show="!hasGoodVoice(s)" class="warn">
+      <p v-for="s in ['cn', 'en']" :key="'hint-' + s" v-show="store.settings.tts[s].engine === 'system' && !hasGoodVoice(s)" class="warn">
         {{ NAMES[s] }}还没有"增强"或"高级"语音，听起来会比较生硬。可以在 iPad「设置 → 辅助功能 → 朗读内容 → 声音 → {{ s === 'cn' ? '中文' : '英语' }}」里下载带"增强"或"高级"字样的声音，下载后回到这里重新打开设置。
+      </p>
+      <p v-if="['cn', 'en'].some((s) => store.settings.tts[s].engine === 'deepseek') && !store.settings.scoring.key" class="warn">
+        DeepSeek 朗读要用下面「录音打分」里的密钥，还没填时会用 iPad 系统语音。
+      </p>
+      <p class="muted">
+        DeepSeek 朗读需要联网，生成过的会存在这台 iPad 上，再读不花钱、不用网。缓存：{{ ttsCache.count }} 段，{{ (ttsCache.bytes / 1e6).toFixed(1) }} MB
+        <button v-if="ttsCache.count" class="small" @click="clearCache">清空</button>
       </p>
     </section>
 
@@ -321,6 +351,7 @@ select, input[type=file] { font-size: 22px; padding: 12px; border-radius: 12px; 
 .file-btn input { position: absolute; opacity: 0; width: 1px; height: 1px; overflow: hidden; }
 .warn { color: #c0392b; }
 .tts-row { margin-bottom: 12px; }
+.small { min-height: 40px; font-size: 16px; padding: 6px 14px; margin-left: 8px; }
 .tts-row strong { width: 48px; }
 .key { font-size: 20px; padding: 12px; border-radius: 12px; border: 1px solid #ddd; min-width: 360px; }
 .check { display: flex; align-items: center; gap: 8px; }

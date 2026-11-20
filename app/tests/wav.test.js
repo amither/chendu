@@ -1,5 +1,5 @@
 import { test, expect } from 'vitest'
-import { mixdown, resample, encodeWav } from '../src/lib/wav.js'
+import { mixdown, resample, encodeWav, fixWavHeader } from '../src/lib/wav.js'
 
 test('mixdown averages channels', () => {
   expect([...mixdown([new Float32Array([1, 0]), new Float32Array([0, 1])])]).toEqual([0.5, 0.5])
@@ -31,4 +31,19 @@ test('encodeWav writes a 16-bit mono PCM header and clamped samples', () => {
   expect(str(36, 4)).toBe('data')
   expect(v.getUint32(40, true)).toBe(8)
   expect([0, 1, 2, 3].map((i) => v.getInt16(44 + i * 2, true))).toEqual([0, 32767, -32768, 32767])
+})
+
+test('fixWavHeader fills in streamed (0xFFFFFFFF) sizes', () => {
+  const buf = encodeWav(new Float32Array([0, 0.5, -0.5]), 24000)
+  const v = new DataView(buf)
+  v.setUint32(4, 0xffffffff, true)
+  v.setUint32(40, 0xffffffff, true)
+  expect(fixWavHeader(buf)).toBe(buf)
+  expect(v.getUint32(4, true)).toBe(buf.byteLength - 8)
+  expect(v.getUint32(40, true)).toBe(6)
+})
+
+test('fixWavHeader leaves non-WAV data alone', () => {
+  const buf = new TextEncoder().encode('{"error":1}').buffer
+  expect(new Uint8Array(fixWavHeader(buf))).toEqual(new TextEncoder().encode('{"error":1}'))
 })

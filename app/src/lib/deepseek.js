@@ -1,3 +1,5 @@
+import { fixWavHeader } from './wav.js'
+
 const BASE = 'https://api.deepseek.com'
 
 // kind: auth | balance | server | network | timeout | bad (unusable model
@@ -9,7 +11,7 @@ export class ScoringError extends Error {
   }
 }
 
-async function call(url, init, { fetchImpl = globalThis.fetch, timeoutMs }) {
+async function call(url, init, { fetchImpl = globalThis.fetch, timeoutMs, as = 'json' }) {
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), timeoutMs)
   try {
@@ -23,9 +25,9 @@ async function call(url, init, { fetchImpl = globalThis.fetch, timeoutMs }) {
     if (res.status === 402) throw new ScoringError('balance', 'HTTP 402')
     if (!res.ok) throw new ScoringError('server', `HTTP ${res.status}`)
     try {
-      return await res.json()
+      return await (as === 'arrayBuffer' ? res.arrayBuffer() : res.json())
     } catch {
-      throw new ScoringError(ctrl.signal.aborted ? 'timeout' : 'server', '返回内容不是 JSON')
+      throw new ScoringError(ctrl.signal.aborted ? 'timeout' : 'server', as === 'arrayBuffer' ? '返回内容读取失败' : '返回内容不是 JSON')
     }
   } finally {
     clearTimeout(timer)
@@ -50,6 +52,15 @@ export async function chatJSON(key, messages, opts = {}) {
     body: JSON.stringify({ model: 'deepseek-reasoner', response_format: { type: 'json_object' }, messages }),
   }, { timeoutMs: 90000, ...opts })
   return j.choices?.[0]?.message?.content ?? ''
+}
+
+export async function synthesize(key, text, voice = 'stella', opts = {}) {
+  const buf = await call(`${BASE}/v1/tools/tts`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+    body: JSON.stringify({ text, voice_id: voice, format: 'wav' }),
+  }, { timeoutMs: 30000, as: 'arrayBuffer', ...opts })
+  return new Blob([fixWavHeader(buf)], { type: 'audio/wav' })
 }
 
 export function messageFor(err) {

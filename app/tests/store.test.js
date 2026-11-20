@@ -113,3 +113,15 @@ test('scoring settings default, backup leaves the key out, restore keeps the loc
   await s.importBackup(backup)
   expect(s.settings.scoring).toEqual({ key: 'sk-secret', auto: false })
 })
+
+test('tts engine defaults to system; cloudTts needs deepseek engine and a key', async () => {
+  const s = useAppStore()
+  await s.load()
+  expect(s.settings.tts.cn).toMatchObject({ engine: 'system', dsVoice: 'stella' })
+  expect(s.cloudTts('cn')).toBeNull()
+  await s.setSetting('tts', { ...s.settings.tts, cn: { ...s.settings.tts.cn, engine: 'deepseek' } })
+  expect(s.cloudTts('cn')).toBeNull() // no key yet
+  await s.setSetting('scoring', { key: 'sk-x', auto: true })
+  expect(s.cloudTts('cn')).toEqual({ key: 'sk-x', voice: 'stella' })
+  expect(s.cloudTts('en')).toBeNull()
+})

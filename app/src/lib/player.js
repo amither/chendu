@@ -2,6 +2,12 @@ import { getDB } from './db.js'
 import { countChars, estimateTimings, activeIndex } from './highlight.js'
 import { lineText } from './piece.js'
 import { pickVoice } from './voices.js'
+import { cachedSpeech } from './ttscache.js'
+import { encodeWav } from './wav.js'
+
+// Longest wait for a line that DeepSeek is still synthesizing before it is
+// read with the system voice instead.
+const TTS_WAIT_MS = 15000
 
 // Plays a piece's model reading. onLine(i) is called with the line being
 // read (-1 when nothing is), only when the index changes. Chinese uses one
@@ -14,13 +20,17 @@ import { pickVoice } from './voices.js'
 // one persistent element, and prepare() resolves blob URLs ahead of time so
 // play() can call el.play() synchronously.
 // opts.tts(): { cn: { voiceURI, rate }, en: { ... } } — the parent's TTS settings.
+// opts.cloud(subject): { key, voice } to read lines without real audio with
+// DeepSeek speech, or null for the system voice.
 export function createPlayer(opts = {}) {
   const el = typeof Audio !== 'undefined' ? new Audio() : null
   let token = 0
   let prepSeq = 0
   let finish = null
   let blobUrl = null
-  let prepared = { piece: null, map: new Map() }
+  // map: path or tts:<line> → object URL; tts: tts:<line> → Promise of that URL
+  // (null on failure) while DeepSeek synthesis is still running.
+  let prepared = { piece: null, map: new Map(), tts: new Map() }
 
   function stop() {
     token++
@@ -47,15 +57,28 @@ export function createPlayer(opts = {}) {
     }
   }
 
+  // iOS lets a media element play only when play() is first called inside a
+  // tap. When the first sound isn't ready audio (system voice, or synthesis
+  // still running), play a moment of silence now so later lines may play.
+  let silentUrl = null
+  function unlock() {
+    if (!el) return
+    silentUrl ??= URL.createObjectURL(new Blob([encodeWav(new Float32Array(1600), 16000)], { type: 'audio/wav' }))
+    el.src = silentUrl
+    el.play()?.catch?.(() => {})
+  }
+
   function revokePrepared() {
     prepared.map.forEach((u) => URL.revokeObjectURL(u))
-    prepared = { piece: null, map: new Map() }
+    prepared = { piece: null, map: new Map(), tts: new Map() }
   }
 
   function dispose() {
     stop()
     prepSeq++
     revokePrepared()
+    if (silentUrl) URL.revokeObjectURL(silentUrl)
+    silentUrl = null
   }
 
   async function blobFor(path) {
@@ -76,7 +99,45 @@ export function createPlayer(opts = {}) {
       return
     }
     revokePrepared()
-    prepared = { piece, map }
+    prepared = { piece, map, tts: new Map() }
+    synthesizeMissing(piece, seq)
+  }
+
+  // Synthesizes lines without real audio in the background, three at a time.
+  // Each line gets a promise in prepared.tts so play() can wait for a line
+  // that isn't ready yet; finished lines also land in prepared.map.
+  function synthesizeMissing(piece, seq) {
+    const cloud = opts.cloud?.(piece.subject)
+    if (!cloud || (piece.subject === 'cn' && piece.audio)) return
+    const todo = []
+    piece.lines.forEach((line, i) => {
+      if (line.audio) return
+      let resolve
+      prepared.tts.set(`tts:${i}`, new Promise((r) => { resolve = r }))
+      todo.push({ i, resolve })
+    })
+    const worker = async () => {
+      while (todo.length && seq === prepSeq) {
+        const { i, resolve } = todo.shift()
+        try {
+          const blob = await cachedSpeech(cloud.key, cloud.voice, lineText(piece.lines[i]))
+          if (seq !== prepSeq) return resolve(null)
+          const url = URL.createObjectURL(blob)
+          prepared.map.set(`tts:${i}`, url)
+          resolve(url)
+        } catch {
+          resolve(null) // this line falls back to the system voice
+        }
+      }
+    }
+    worker(); worker(); worker()
+  }
+
+  // A line still being synthesized: wait for it, but not forever.
+  function waitTts(name) {
+    const p = prepared.tts.get(name)
+    if (!p) return null
+    return Promise.race([p, new Promise((r) => setTimeout(() => r(null), TTS_WAIT_MS))])
   }
 
   const isPrepared = (piece) =>
@@ -147,6 +208,9 @@ export function createPlayer(opts = {}) {
     }
     const lang = piece.subject === 'cn' ? 'zh-CN' : 'en-US'
 
+    const firstPath = piece.subject === 'cn' && piece.audio ? piece.audio : (piece.lines[0]?.audio || 'tts:0')
+    if (!ready || !prepared.map.get(firstPath)) unlock()
+
     let wholeDone = false
     if (piece.subject === 'cn') {
       // `await` always yields a microtask, even for a plain value, which would
@@ -168,7 +232,11 @@ export function createPlayer(opts = {}) {
       for (let i = 0; i < piece.lines.length && my === token; i++) {
         emit(i)
         const line = piece.lines[i]
-        const u = ready ? (line.audio ? prepared.map.get(line.audio) ?? null : null) : await urlFor(line.audio)
+        const name = line.audio || `tts:${i}`
+        // The sync lookup keeps a ready first line inside the tap gesture; when
+        // a line is still synthesizing, unlock() has already run, so waiting is safe.
+        let u = ready ? (prepared.map.get(name) ?? null) : await urlFor(line.audio)
+        if (!u && ready && !line.audio && prepared.tts.has(name)) u = await waitTts(name)
         if (my !== token) return
         const r = u ? await playUrl(u) : 'none'
         if (my !== token) return
@@ -198,6 +266,15 @@ export function createPlayer(opts = {}) {
   // Speaks one sample sentence with the current settings (for 试听).
   async function sample(text, subject) {
     stop()
+    const cloud = opts.cloud?.(subject)
+    if (cloud) {
+      unlock()
+      try {
+        return await playBlob(await cachedSpeech(cloud.key, cloud.voice, text))
+      } catch {
+        // fall back to the system voice below
+      }
+    }
     await speak(text, subject === 'cn' ? 'zh-CN' : 'en-US', subject)
   }
 

@@ -12,7 +12,10 @@ export const useAppStore = defineStore('app', () => {
   const plans = ref({})
   const progress = ref({})
   const checkins = ref({})
-const DEFAULT_TTS = { cn: { voiceURI: '', rate: 0.8 }, en: { voiceURI: '', rate: 0.85 } }
+const DEFAULT_TTS = {
+  cn: { voiceURI: '', rate: 0.8, engine: 'system', dsVoice: 'stella' },
+  en: { voiceURI: '', rate: 0.85, engine: 'system', dsVoice: 'stella' },
+}
 const DEFAULT_SCORING = { key: '', auto: true }
   const withDefaults = (s = {}) => ({
     pinyin: true,
@@ -155,9 +158,16 @@ const DEFAULT_SCORING = { key: '', auto: true }
     await load()
   }
 
+  // DeepSeek voice for lines without real audio, or null to use the system voice.
+  function cloudTts(subject) {
+    const t = settings.value.tts[subject]
+    const key = settings.value.scoring.key
+    return t?.engine === 'deepseek' && key ? { key, voice: t.dsVoice } : null
+  }
+
   return {
     plans, progress, checkins, settings, loaded,
     load, plansFor, setPlan, todayItems, getPiece, read, streakOf, stars, todayEntry,
-    setSetting, exportBackup, importBackup,
+    setSetting, cloudTts, exportBackup, importBackup,
   }
 })

@@ -1,5 +1,5 @@
 import { test, expect } from 'vitest'
-import { transcribe, chatJSON, ScoringError, messageFor } from '../src/lib/deepseek.js'
+import { transcribe, chatJSON, synthesize, ScoringError, messageFor } from '../src/lib/deepseek.js'
 
 const ok = (body) => async () => new Response(JSON.stringify(body), { status: 200 })
 const status = (code) => async () => new Response('{}', { status: code })
@@ -50,4 +50,34 @@ test('messageFor gives parent/child friendly text', () => {
 test('a 200 response that is not JSON is a server error', async () => {
   const fetchImpl = async () => new Response('<html>', { status: 200 })
   await expect(transcribe('k', new Blob(['w']), { fetchImpl })).rejects.toMatchObject({ kind: 'server' })
+})
+
+test('synthesize posts text and voice and returns a fixed WAV blob', async () => {
+  let body
+  const wav = new Uint8Array(46)
+  wav.set([...'RIFF'].map((c) => c.charCodeAt(0)), 0)
+  new DataView(wav.buffer).setUint32(4, 0xffffffff, true)
+  wav.set([...'WAVEfmt '].map((c) => c.charCodeAt(0)), 8)
+  new DataView(wav.buffer).setUint32(16, 0, true) // empty fmt chunk keeps the test small
+  wav.set([...'data'].map((c) => c.charCodeAt(0)), 20)
+  new DataView(wav.buffer).setUint32(24, 0xffffffff, true)
+  const fetchImpl = async (url, init) => {
+    body = { url, auth: init.headers.Authorization, json: JSON.parse(init.body) }
+    return new Response(wav.slice(0, 30), { status: 200, headers: { 'content-type': 'audio/wav' } })
+  }
+  const blob = await synthesize('sk-x', '鹅鹅鹅', 'tide', { fetchImpl })
+  expect(body).toEqual({
+    url: 'https://api.deepseek.com/v1/tools/tts', auth: 'Bearer sk-x',
+    json: { text: '鹅鹅鹅', voice_id: 'tide', format: 'wav' },
+  })
+  expect(blob.type).toBe('audio/wav')
+  const v = new DataView(await blob.arrayBuffer())
+  expect(v.getUint32(4, true)).toBe(22)
+  expect(v.getUint32(24, true)).toBe(2)
+})
+
+test('synthesize classifies errors', async () => {
+  const r = await synthesize('k', 'x', 'stella', { fetchImpl: async () => new Response('{}', { status: 401 }) })
+    .catch((e) => e.kind)
+  expect(r).toBe('auth')
 })
