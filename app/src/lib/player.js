@@ -22,6 +22,7 @@ const TTS_WAIT_MS = 15000
 // opts.tts(): { cn: { voiceURI, rate }, en: { ... } } — the parent's TTS settings.
 // opts.cloud(subject): { key, voice } to read lines without real audio with
 // DeepSeek speech, or null for the system voice.
+// opts.onTtsError(err): called once per prepared piece when synthesis fails.
 export function createPlayer(opts = {}) {
   const el = typeof Audio !== 'undefined' ? new Audio() : null
   let token = 0
@@ -62,6 +63,13 @@ export function createPlayer(opts = {}) {
   // still running), play a moment of silence now so later lines may play.
   let silentUrl = null
   function unlock() {
+    // speechSynthesis has the same rule: a fallback line spoken after an
+    // await stays silent on iOS unless something was spoken in the tap.
+    if (typeof SpeechSynthesisUtterance !== 'undefined' && typeof speechSynthesis !== 'undefined') {
+      const u = new SpeechSynthesisUtterance(' ')
+      u.volume = 0
+      speechSynthesis.speak(u)
+    }
     if (!el) return
     silentUrl ??= URL.createObjectURL(new Blob([encodeWav(new Float32Array(1600), 16000)], { type: 'audio/wav' }))
     el.src = silentUrl
@@ -124,6 +132,7 @@ export function createPlayer(opts = {}) {
       prepared.tts.set(`tts:${i}`, new Promise((r) => { resolve = r }))
       todo.push({ i, resolve })
     })
+    let reported = false
     const worker = async () => {
       while (todo.length && seq === prepSeq) {
         const { i, resolve } = todo.shift()
@@ -133,8 +142,12 @@ export function createPlayer(opts = {}) {
           const url = URL.createObjectURL(blob)
           prepared.map.set(`tts:${i}`, url)
           resolve(url)
-        } catch {
+        } catch (e) {
           resolve(null) // this line falls back to the system voice
+          if (seq === prepSeq && !reported) {
+            reported = true
+            opts.onTtsError?.(e)
+          }
         }
       }
     }

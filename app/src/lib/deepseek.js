@@ -71,3 +71,14 @@ export function messageFor(err) {
     default: return '这次没打成分，可以在录音管理里重新打分'
   }
 }
+
+export function ttsMessage(err) {
+  const why = {
+    auth: '密钥不对',
+    balance: '账户余额不足',
+    timeout: '网络太慢',
+    network: '网络连不上',
+  }[err?.kind] ?? '服务出错'
+  const fix = err?.kind === 'auth' ? '请家长在设置里检查密钥。' : err?.kind === 'balance' ? '请家长充值。' : ''
+  return `DeepSeek 朗读失败：${why}，这次用 iPad 语音朗读。${fix}`
+}

@@ -9,13 +9,18 @@ import { dateKey } from '../lib/streak.js'
 import PinyinLine from '../components/PinyinLine.vue'
 import { minReadSeconds } from '../lib/piece.js'
 import { scoreRecording } from '../lib/scorer.js'
-import { messageFor } from '../lib/deepseek.js'
+import { messageFor, ttsMessage } from '../lib/deepseek.js'
 import { tokensFor, marksFor, splitEnLine } from '../lib/scoring.js'
 
 const props = defineProps({ subject: String, index: Number })
 const store = useAppStore()
 const router = useRouter()
-const player = createPlayer({ tts: () => store.settings.tts, cloud: (s) => store.cloudTts(s) })
+const ttsError = ref('')
+const player = createPlayer({
+  tts: () => store.settings.tts,
+  cloud: (s) => store.cloudTts(s),
+  onTtsError: (e) => { ttsError.value = ttsMessage(e) },
+})
 
 const piece = ref(null)
 const activeLine = ref(-1)
@@ -81,6 +86,7 @@ watch(
     lastRecording.value = null
     celebrate.value = ''
     micError.value = ''
+    ttsError.value = ''
     const it = item.value
     if (!it) {
       piece.value = null
@@ -260,6 +266,7 @@ onUnmounted(() => {
           </template>
         </div>
         <p v-if="micError" class="error">{{ micError }}</p>
+        <p v-if="ttsError" class="error">{{ ttsError }}</p>
       </section>
     </div>
   </main>

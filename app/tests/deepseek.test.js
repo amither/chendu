@@ -1,5 +1,5 @@
 import { test, expect } from 'vitest'
-import { transcribe, chatJSON, synthesize, ScoringError, messageFor } from '../src/lib/deepseek.js'
+import { transcribe, chatJSON, synthesize, ScoringError, messageFor, ttsMessage } from '../src/lib/deepseek.js'
 
 const ok = (body) => async () => new Response(JSON.stringify(body), { status: 200 })
 const status = (code) => async () => new Response('{}', { status: code })
@@ -80,4 +80,11 @@ test('synthesize classifies errors', async () => {
   const r = await synthesize('k', 'x', 'stella', { fetchImpl: async () => new Response('{}', { status: 401 }) })
     .catch((e) => e.kind)
   expect(r).toBe('auth')
+})
+
+test('ttsMessage tells the parent why DeepSeek reading fell back', () => {
+  expect(ttsMessage(new ScoringError('auth', ''))).toBe('DeepSeek 朗读失败：密钥不对，这次用 iPad 语音朗读。请家长在设置里检查密钥。')
+  expect(ttsMessage(new ScoringError('balance', ''))).toContain('余额不足')
+  expect(ttsMessage(new ScoringError('timeout', ''))).toContain('网络')
+  expect(ttsMessage(new Error('x'))).toContain('iPad 语音')
 })
