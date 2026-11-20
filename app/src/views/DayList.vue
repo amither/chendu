@@ -30,6 +30,7 @@ watch(
     <div class="topbar">
       <button @click="router.push('/')">← 返回</button>
       <h1>第 {{ p.week }} 周 · 第 {{ p.day }} 天</h1>
+      <button @click="router.push(`/plan/${subject}`)">📋 计划</button>
       <button v-if="firstTodo >= 0" class="primary" @click="router.push(`/read/${subject}/${firstTodo}`)">开始读 ▶</button>
     </div>
     <div class="list">

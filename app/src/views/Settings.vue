@@ -149,7 +149,7 @@ onMounted(() => {
     </section>
 
     <section class="card" v-for="s in ['cn', 'en']" :key="s">
-      <h2>{{ NAMES[s] }}进度</h2>
+      <h2>{{ NAMES[s] }}进度 <button v-if="picks[s]" class="plan-btn" @click="router.push(`/plan/${s}`)">📋 查看每周计划</button></h2>
       <p v-if="!picks[s]" class="muted">还没有{{ NAMES[s] }}内容。</p>
       <div v-else class="row">
         <select v-model="picks[s].planId" @change="onPlanChange(s)">
@@ -211,6 +211,7 @@ onMounted(() => {
 <style scoped>
 .settings section { margin-bottom: 24px; font-size: 22px; }
 h2 { margin-top: 0; }
+.plan-btn { min-height: 48px; font-size: 18px; padding: 8px 16px; margin-left: 12px; vertical-align: middle; }
 .row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
 select, input[type=file] { font-size: 22px; padding: 12px; border-radius: 12px; }
 .cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-top: 16px; text-align: center; }

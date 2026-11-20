@@ -4,6 +4,7 @@ import DayList from './views/DayList.vue'
 import Reader from './views/Reader.vue'
 import Settings from './views/Settings.vue'
 import Recordings from './views/Recordings.vue'
+import Plan from './views/Plan.vue'
 
 export const router = createRouter({
   history: createWebHashHistory(),
@@ -17,5 +18,6 @@ export const router = createRouter({
     },
     { path: '/settings', component: Settings },
     { path: '/recordings', component: Recordings },
+    { path: '/plan/:subject', component: Plan, props: true },
   ],
 })

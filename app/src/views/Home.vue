@@ -3,7 +3,6 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '../stores/app.js'
 import { dayStatus } from '../lib/progress.js'
-import LongPress from '../components/LongPress.vue'
 
 const store = useAppStore()
 const router = useRouter()
@@ -33,12 +32,12 @@ const cards = computed(() =>
   <main class="page">
     <div class="topbar">
       <h1>⭐ {{ store.stars() }}</h1>
-      <LongPress @long="router.push('/settings')">⚙️</LongPress>
+      <button class="gear" @click="router.push('/settings')">⚙️</button>
     </div>
 
     <div v-if="!cards.length" class="card empty">
       <p>还没有晨读内容</p>
-      <p class="muted">请家长长按右上角 ⚙️ 两秒，进入设置导入内容包。</p>
+      <p class="muted">请家长点右上角 ⚙️ 进入设置，导入内容包。</p>
     </div>
 
     <div class="cards">
@@ -54,6 +53,7 @@ const cards = computed(() =>
           <div class="where">{{ c.where }}</div>
           <div class="count">{{ c.status.completed }} / {{ c.status.total }} 篇</div>
         </template>
+        <button class="plan-link" @click.stop="router.push(`/plan/${c.subject}`)">📋 查看计划</button>
         <div class="foot">
           <span>🔥 连续 {{ c.streak }} 天</span>
           <span v-if="c.doneToday" class="done">今天已完成 ✓</span>
@@ -75,4 +75,6 @@ const cards = computed(() =>
 .foot { display: flex; justify-content: space-between; font-size: 22px; }
 .done { color: var(--ok); }
 .empty { text-align: center; font-size: 28px; }
+.gear { background: transparent; box-shadow: none; font-size: 32px; }
+.plan-link { align-self: flex-start; min-height: 52px; font-size: 20px; padding: 8px 18px; background: var(--bg); }
 </style>
