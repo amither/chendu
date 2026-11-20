@@ -79,6 +79,11 @@ class ConvertTest(unittest.TestCase):
         self.assertEqual(p["translation"], ["鹅，弯曲着脖子向天高歌。"])
         self.assertEqual(p["notes"], [{"title": "曲项", "content": "弯曲的脖颈"}])
 
+    def test_cn_piece_flat_notes(self):
+        poem = dict(POEM, detail_list=[
+            {"type": 3, "info_json": json.dumps([{"title": "曲项", "content": "弯曲的脖颈"}]), "audio_url": None}])
+        self.assertEqual(bp.cn_piece_full(poem)["notes"], [{"title": "曲项", "content": "弯曲的脖颈"}])
+
     def test_cn_piece_text(self):
         p = bp.cn_piece_text(WEEK["weeks"][0]["days"][0]["records"][0])
         self.assertEqual(p["id"], "cnt-1172")
@@ -136,6 +141,22 @@ class RealDataTest(unittest.TestCase):
                 self.assertFalse(any(n.startswith("audio/") for n in z.namelist()))
             self.assertFalse(g1_ids & text_ids)
             self.assertTrue(all(n.startswith("pieces/cnt-") for n in text_ids))
+
+    def test_build_real_g2_pack(self):
+        with tempfile.TemporaryDirectory() as d:
+            packs = bp.build_all(ROOT / "data", Path(d))
+            if "g2" not in packs:
+                self.skipTest("需要二年级完整数据")
+            with zipfile.ZipFile(packs["g2"]) as z:
+                manifest = json.loads(z.read("manifest.json"))
+                names = z.namelist()
+            with zipfile.ZipFile(packs["text"]) as z:
+                text_plans = json.loads(z.read("manifest.json"))["plans"]
+            self.assertEqual(manifest["plans"], ["cn-8", "cn-32"])
+            self.assertTrue(all(n.startswith("pieces/cn-") for n in names if n.startswith("pieces/")))
+            self.assertTrue(any(n.startswith("audio/") for n in names))
+            self.assertNotIn("cn-8", text_plans)
+            self.assertNotIn("cn-32", text_plans)
 
     @unittest.skipUnless((ROOT / "data/raw/en/2").exists(), "需要英语中高级数据")
     def test_build_real_en_pack(self):
