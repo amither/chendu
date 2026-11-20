@@ -158,6 +158,20 @@ class RealDataTest(unittest.TestCase):
             self.assertNotIn("cn-8", text_plans)
             self.assertNotIn("cn-32", text_plans)
 
+    def test_build_real_g3_pack(self):
+        with tempfile.TemporaryDirectory() as d:
+            packs = bp.build_all(ROOT / "data", Path(d))
+            if "g3" not in packs:
+                self.skipTest("需要三年级完整数据")
+            with zipfile.ZipFile(packs["g3"]) as z:
+                manifest = json.loads(z.read("manifest.json"))
+                names = z.namelist()
+            with zipfile.ZipFile(packs["text"]) as z:
+                text_plans = json.loads(z.read("manifest.json"))["plans"]
+            self.assertEqual(manifest["plans"], ["cn-9", "cn-33"])
+            self.assertTrue(any(n.startswith("audio/") for n in names))
+            self.assertEqual(text_plans, ["cn-10", "cn-34", "cn-11", "cn-35", "cn-12", "cn-36"])
+
     @unittest.skipUnless((ROOT / "data/raw/en/2").exists(), "需要英语中高级数据")
     def test_build_real_en_pack(self):
         with tempfile.TemporaryDirectory() as d:

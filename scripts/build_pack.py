@@ -16,8 +16,9 @@ EN_TITLES = {1: "英语初级（1-2年级）", 2: "英语中级（3-4年级）",
 G1_CN = [7, 31]
 G1_EN = [1]
 MORE_EN = [2, 3]
-G2_CN = [8, 32]
-TEXT_CN = [9, 33, 10, 34, 11, 35, 12, 36]
+# Grades that get their own full pack (pinyin + audio) once fully fetched.
+FULL_CN = {"g2": ("二年级语文（上下册）", [8, 32]), "g3": ("三年级语文（上下册）", [9, 33])}
+TEXT_CN = [8, 32, 9, 33, 10, 34, 11, 35, 12, 36]
 
 
 def audio_path(url):
@@ -164,14 +165,16 @@ def build_all(data_dir, out_dir):
     packs["g1"] = write_pack(out_dir / "chendu-g1.zip", "g1", "一年级（语文上下册 + 英语初级）", plans,
                     list(pieces.values()), data_dir / "audio")
 
-    if _has_full_cn(raw, G2_CN):
+    full_grades = set()
+    for pack_id, (title, grades) in FULL_CN.items():
+        if not _has_full_cn(raw, grades):
+            continue
         plans, pieces = [], {}
-        _add_cn_full(raw, G2_CN, plans, pieces)
-        packs["g2"] = write_pack(out_dir / "chendu-g2.zip", "g2", "二年级语文（上下册）", plans,
-                                 list(pieces.values()), data_dir / "audio")
-        text_grades = TEXT_CN
-    else:
-        text_grades = G2_CN + TEXT_CN
+        _add_cn_full(raw, grades, plans, pieces)
+        packs[pack_id] = write_pack(out_dir / f"chendu-{pack_id}.zip", pack_id, title, plans,
+                                    list(pieces.values()), data_dir / "audio")
+        full_grades.update(grades)
+    text_grades = [g for g in TEXT_CN if g not in full_grades]
 
     plans, pieces = [], {}
     for g in text_grades:
