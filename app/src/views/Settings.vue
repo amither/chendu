@@ -4,10 +4,25 @@ import { useRouter } from 'vue-router'
 import { useAppStore } from '../stores/app.js'
 import { importPack } from '../lib/pack.js'
 import { dateKey } from '../lib/streak.js'
-import { needRefresh, applyUpdate } from '../lib/sw.js'
+import { needRefresh, applyUpdate, checkForUpdate, APP_VERSION } from '../lib/sw.js'
+import { updateStatus } from '../lib/version.js'
 
 const store = useAppStore()
 const router = useRouter()
+
+// ---- 版本和更新
+const checking = ref(false)
+const updateMsg = ref(null)
+async function checkUpdate() {
+  checking.value = true
+  updateMsg.value = null
+  try {
+    const latest = await checkForUpdate()
+    updateMsg.value = updateStatus({ current: APP_VERSION, latest, needRefresh: needRefresh.value })
+  } finally {
+    checking.value = false
+  }
+}
 const NAMES = { cn: '语文', en: '英语' }
 
 // ---- 导入内容包
@@ -136,9 +151,15 @@ onMounted(() => {
       <h1>家长设置</h1>
     </div>
 
-    <section v-if="needRefresh" class="card">
-      <h2>有新版本</h2>
-      <button class="primary" @click="applyUpdate(true)">立即更新</button>
+    <section class="card">
+      <h2>版本</h2>
+      <p>当前版本 <b>{{ APP_VERSION }}</b></p>
+      <div class="row">
+        <button :disabled="checking" @click="checkUpdate">{{ checking ? '检查中…' : '检查更新' }}</button>
+        <button v-if="needRefresh" class="primary" @click="applyUpdate()">立即更新</button>
+      </div>
+      <p v-if="updateMsg" :class="{ warn: updateMsg.kind === 'offline' }">{{ updateMsg.text }}</p>
+      <p v-else-if="needRefresh">发现新版本，点"立即更新"后 App 会重新打开。</p>
     </section>
 
     <section class="card">
