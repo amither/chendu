@@ -1,5 +1,5 @@
 import { test, expect } from 'vitest'
-import { lineText, lineChars, minReadSeconds } from '../src/lib/piece.js'
+import { lineText, lineChars, minReadSeconds, readLocked } from '../src/lib/piece.js'
 
 test('lineText for curated, text and english lines', () => {
   expect(lineText({ chars: [{ c: '鹅', p: 'é' }, { c: '，', p: '' }] })).toBe('鹅，')
@@ -31,4 +31,11 @@ test('minReadSeconds: english by words, well under a model reading', () => {
   const en = { subject: 'en', lines: [{ text }] }
   expect(minReadSeconds(en)).toBe(Math.round(48 * 0.3))
   expect(minReadSeconds({ subject: 'en', lines: [{ text: 'Hi, Tom!' }] })).toBe(3)
+})
+
+test('readLocked: the countdown only applies without a recording', () => {
+  expect(readLocked({ cooldown: 5, hasRecording: false })).toBe(true)
+  expect(readLocked({ cooldown: 5, hasRecording: true })).toBe(false)
+  expect(readLocked({ cooldown: 0, hasRecording: false })).toBe(false)
+  expect(readLocked({ cooldown: 0, hasRecording: true })).toBe(false)
 })

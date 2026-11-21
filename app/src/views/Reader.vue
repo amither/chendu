@@ -7,7 +7,7 @@ import { recorderSupported, startRecording } from '../lib/recorder.js'
 import { saveRecording } from '../lib/recordings.js'
 import { dateKey } from '../lib/streak.js'
 import PinyinLine from '../components/PinyinLine.vue'
-import { minReadSeconds } from '../lib/piece.js'
+import { minReadSeconds, readLocked } from '../lib/piece.js'
 import { scoreRecording } from '../lib/scorer.js'
 import { messageFor, ttsMessage } from '../lib/deepseek.js'
 import { tokensFor, marksFor, splitEnLine } from '../lib/scoring.js'
@@ -36,6 +36,10 @@ const busy = ref(false)
 // and restarts after each counted read.
 const cooldown = ref(0)
 let cooldownTimer = null
+// A recording made this round (or one in progress) lifts the countdown.
+const recordedThisRound = ref(false)
+const locked = computed(() =>
+  readLocked({ cooldown: cooldown.value, hasRecording: recordedThisRound.value || !!recording.value }))
 function startCooldown(seconds) {
   clearInterval(cooldownTimer)
   cooldown.value = seconds
@@ -84,6 +88,7 @@ watch(
     stopAll()
     clearScore()
     lastRecording.value = null
+    recordedThisRound.value = false
     celebrate.value = false
     micError.value = ''
     ttsError.value = ''
@@ -128,6 +133,7 @@ async function toggleRecord() {
   if (recording.value) {
     const { blob, durationSec } = await recording.value.stop()
     recording.value = null
+    recordedThisRound.value = true
     lastRecording.value = blob
     const p = piece.value
     try {
@@ -166,7 +172,7 @@ async function playMine() {
 }
 
 async function markRead() {
-  if (busy.value || cooldown.value > 0 || !item.value) return
+  if (busy.value || locked.value || !item.value) return
   busy.value = true
   try {
     const times = item.value.times
@@ -175,6 +181,7 @@ async function markRead() {
     stopAll()
     if (recording.value) await toggleRecord()
     const { dayComplete } = await store.read(subject, index)
+    recordedThisRound.value = false // the next round needs its own recording
     if (dayComplete) {
       celebrate.value = true
       return
@@ -252,8 +259,8 @@ onUnmounted(() => {
           {{ recording ? '⏺ 录音中…点击结束' : '🎙 录一遍' }}
         </button>
         <button :disabled="!lastRecording" @click="playMine">👂 听我读的</button>
-        <button class="primary" :disabled="busy || cooldown > 0" @click="markRead">
-          {{ cooldown > 0 ? `读完一遍 ✓（${cooldown}）` : '读完一遍 ✓' }}
+        <button class="primary" :disabled="busy || locked" @click="markRead">
+          {{ locked ? `读完一遍 ✓（${cooldown}）` : '读完一遍 ✓' }}
         </button>
         <div v-if="scoring" class="score-card" :class="scoring.status">
           <template v-if="scoring.status === 'scoring'">打分中…</template>

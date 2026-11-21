@@ -20,3 +20,9 @@ export function minReadSeconds(piece) {
     : text.replace(/[\p{P}\p{S}\s]/gu, '').length * 0.15
   return Math.max(3, Math.round(units))
 }
+
+// 读完一遍 stays locked during the countdown unless the child has recorded
+// this round: a recording shows the piece really was read, so no waiting.
+export function readLocked({ cooldown, hasRecording }) {
+  return cooldown > 0 && !hasRecording
+}
