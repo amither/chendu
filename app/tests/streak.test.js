@@ -10,13 +10,14 @@ test('addDays crosses month and year', () => {
   expect(addDays('2026-12-31', 1)).toBe('2027-01-01')
 })
 
-test('markCheckin sets subject and star only when both done', () => {
+test('markCheckin records each subject on its own', () => {
   const a = markCheckin(undefined, '2026-11-18', 'cn')
-  expect(a).toEqual({ date: '2026-11-18', cn: true, en: false, star: false })
-  expect(markCheckin(a, '2026-11-18', 'en')).toEqual({ date: '2026-11-18', cn: true, en: true, star: true })
+  expect(a).toEqual({ date: '2026-11-18', cn: true, en: false })
+  expect(markCheckin(a, '2026-11-18', 'en')).toEqual({ date: '2026-11-18', cn: true, en: true })
+  expect(markCheckin(a, '2026-11-18', 'cn')).toEqual(a)
 })
 
-const c = (date, cn, en) => ({ date, cn, en, star: cn && en })
+const c = (date, cn, en) => ({ date, cn, en })
 const checkins = Object.fromEntries([
   c('2026-11-14', true, false),
   c('2026-11-15', true, true),
@@ -35,6 +36,9 @@ test('streak includes today when done', () => {
   expect(streak(withToday, 'cn', '2026-11-18')).toBe(5)
 })
 
-test('starCount', () => {
-  expect(starCount(checkins)).toBe(2)
+test('starCount: one star per subject finished per day', () => {
+  // 14: cn · 15: cn+en · 16: cn+en · 17: cn
+  expect(starCount(checkins)).toBe(6)
+  expect(starCount({})).toBe(0)
+  expect(starCount({ '2026-11-18': { date: '2026-11-18', cn: false, en: true, star: false } })).toBe(1)
 })

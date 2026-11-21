@@ -29,7 +29,7 @@ const recording = ref(null) // handle from startRecording
 const lastRecording = ref(null) // Blob
 const micError = ref('')
 const micDenied = ref(false)
-const celebrate = ref('') // '', 'done', 'star'
+const celebrate = ref(false)
 const busy = ref(false)
 // A read only counts after a plausible reading time, so two quick taps on
 // 读完一遍 can't finish a piece. The countdown starts when the piece opens
@@ -84,7 +84,7 @@ watch(
     stopAll()
     clearScore()
     lastRecording.value = null
-    celebrate.value = ''
+    celebrate.value = false
     micError.value = ''
     ttsError.value = ''
     const it = item.value
@@ -176,7 +176,7 @@ async function markRead() {
     if (recording.value) await toggleRecord()
     const { dayComplete } = await store.read(subject, index)
     if (dayComplete) {
-      celebrate.value = store.todayEntry()?.star ? 'star' : 'done'
+      celebrate.value = true
       return
     }
     const done = store.progress[subject].done
@@ -209,8 +209,8 @@ onUnmounted(() => {
 
 <template>
   <main v-if="celebrate" class="page celebrate">
-    <div class="big">{{ celebrate === 'star' ? '⭐' : '🎉' }}</div>
-    <p>{{ celebrate === 'star' ? '语文和英语都读完啦，得到一颗星！' : '今天这一科读完啦！' }}</p>
+    <div class="big">⭐</div>
+    <p>{{ subject === 'cn' ? '语文' : '英语' }}今天读完啦，得到一颗星！</p>
     <button class="primary" @click="router.push('/')">回首页</button>
   </main>
 

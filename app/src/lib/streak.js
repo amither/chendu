@@ -10,9 +10,7 @@ export function addDays(key, n) {
 }
 
 export function markCheckin(entry, date, subject) {
-  const e = { date, cn: false, en: false, ...entry, [subject]: true }
-  e.star = e.cn && e.en
-  return e
+  return { date, cn: false, en: false, ...entry, [subject]: true }
 }
 
 export function streak(checkins, subject, today) {
@@ -25,6 +23,7 @@ export function streak(checkins, subject, today) {
   return n
 }
 
+// One star for every subject finished on a day, so two a day at most.
 export function starCount(checkins) {
-  return Object.values(checkins).filter((e) => e.star).length
+  return Object.values(checkins).reduce((n, e) => n + (e.cn ? 1 : 0) + (e.en ? 1 : 0), 0)
 }

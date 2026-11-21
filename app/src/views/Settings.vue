@@ -313,7 +313,7 @@ onMounted(() => {
         <span v-for="(c, i) in calendar" :key="i" class="cell">
           <template v-if="c">
             <b>{{ c.d }}</b>
-            <small>{{ c.entry?.star ? '⭐' : [c.entry?.cn && '语', c.entry?.en && '英'].filter(Boolean).join('') }}</small>
+            <small>{{ [c.entry?.cn && '语⭐', c.entry?.en && '英⭐'].filter(Boolean).join(' ') }}</small>
           </template>
         </span>
       </div>

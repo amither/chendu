@@ -39,7 +39,8 @@ test('read completes the day, checks in, and persists', async () => {
   expect(await s.read('cn', 0)).toEqual({ dayComplete: false, finished: false })
   expect(await s.read('cn', 1)).toEqual({ dayComplete: true, finished: false })
   const today = dateKey()
-  expect(s.checkins[today]).toEqual({ date: today, cn: true, en: false, star: false })
+  expect(s.checkins[today]).toEqual({ date: today, cn: true, en: false })
+  expect(s.stars()).toBe(1)
   expect(s.streakOf('cn')).toBe(1)
   expect(s.progress.cn).toMatchObject({ week: 1, day: 2, done: {} })
 
